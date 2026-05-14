@@ -28,7 +28,8 @@
         input[type="date"],
         input[type="url"],
         input[type="password"],
-        textarea {
+        textarea,
+        select {
             font-size: 16px !important;
         }
         
@@ -191,9 +192,8 @@
         <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-2xl flex flex-col max-h-[90vh]">
             <h3 class="text-lg font-bold mb-2 text-teal-800 flex items-center gap-2 border-b pb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                AIによる提出用レポート添削（一括）
+                AIによる文章修正
             </h3>
-            <p class="text-xs text-gray-500 mb-4">※AIが上司提出用に文章を整えました。内容を手直ししてから適用できます。</p>
             
             <div id="aiModalContent" class="mb-4 flex-1 overflow-y-auto space-y-6 pr-2">
                 <!-- JSで各項目の比較テキストエリアを動的生成 -->
@@ -201,7 +201,28 @@
             
             <div class="flex justify-end gap-3 pt-4 border-t mt-auto">
                 <button onclick="closeAiModalAll()" class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition">キャンセル</button>
-                <button onclick="applyAiTextAll()" class="px-5 py-2.5 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700 shadow-md transition">すべて適用する</button>
+                <button onclick="applyAiTextSingle()" class="px-5 py-2.5 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700 shadow-md transition">この文章を適用する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- テンプレート保存用モーダル -->
+    <div id="templateModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-md flex flex-col">
+            <h3 class="text-lg font-bold mb-4 text-teal-800 flex items-center gap-2 border-b pb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                テンプレートとして保存
+            </h3>
+            <p class="text-sm text-gray-600 mb-4">現在入力されている内容（項目1〜7）を、今後の使い回し用として保存します。</p>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-bold text-gray-700 mb-1">テンプレート名</label>
+                <input type="text" id="input_template_name" placeholder="例：初期研修（機械Aの操作）" class="w-full p-3 border-2 border-teal-200 rounded-lg focus:border-teal-500 focus:ring-0 outline-none">
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <button onclick="closeTemplateModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition">キャンセル</button>
+                <button onclick="executeSaveTemplate()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 shadow-md transition">保存する</button>
             </div>
         </div>
     </div>
@@ -239,6 +260,7 @@
                 item1: '', item2: '', item3: '', item4: '', item5: '', item6: '', item7: ''
             },
             history: [],
+            templates: [], // テンプレート保存用配列を追加
             settings: {
                 apiKey: '',
                 gasUrl: '',
@@ -263,6 +285,11 @@
             if (savedHistory) {
                 try { state.history = JSON.parse(savedHistory); } catch (e) { }
             }
+
+            const savedTemplates = localStorage.getItem('ojt_templates');
+            if (savedTemplates) {
+                try { state.templates = JSON.parse(savedTemplates); } catch (e) { }
+            }
             
             const savedDraft = localStorage.getItem('ojt_draft');
             if (savedDraft) {
@@ -272,7 +299,6 @@
                     state.currentId = draft.id || null;
                 } catch (e) { }
             } else {
-                // 下書きがない場合、既定の指導者名を設定
                 if(state.settings.defaultTrainer && !state.formData.trainer) {
                     state.formData.trainer = state.settings.defaultTrainer;
                 }
@@ -286,8 +312,8 @@
             localStorage.setItem('ojt_history', JSON.stringify(state.history));
         }
 
-        function saveSettings() {
-            localStorage.setItem('ojt_settings', JSON.stringify(state.settings));
+        function saveTemplates() {
+            localStorage.setItem('ojt_templates', JSON.stringify(state.templates));
         }
 
         function saveDraft() {
@@ -304,25 +330,37 @@
             try {
                 const res = await fetch(state.settings.gasUrl);
                 const data = await res.json();
+                
+                // 新しいGASコードでは {history: [], templates: []} の形式で返ってくる想定
+                if (data.history && Array.isArray(data.history)) {
+                    state.history = data.history;
+                    saveHistory();
+                }
+                if (data.templates && Array.isArray(data.templates)) {
+                    state.templates = data.templates;
+                    saveTemplates();
+                }
+                
+                // 古いGASコードの場合は配列が直接返ってくる
                 if (Array.isArray(data)) {
                     state.history = data;
                     saveHistory();
-                    if(state.currentTab === 'history') renderApp(); // 履歴タブを開いていれば更新
                 }
+
+                if(state.currentTab === 'history' || state.currentTab === 'form') renderApp();
             } catch(e) {
                 console.error("GASデータ取得エラー:", e);
-                // エラーが出てもローカルのデータで動くようにスルーする
             }
         }
 
-        function sendToGas(action, recordOrId) {
+        // action: 'save' or 'delete', data: 送信するデータ, target: 'history' or 'template'
+        function sendToGas(action, data, target = 'history') {
             if (!state.settings.gasUrl) return;
             
-            const payload = { action: action };
-            if (action === 'save') payload.data = recordOrId;
-            if (action === 'delete') payload.id = recordOrId;
+            const payload = { action: action, target: target };
+            if (action === 'save') payload.data = data;
+            if (action === 'delete') payload.id = data; // dataにはIDが入る想定
             
-            // CORS回避のため text/plain で送信
             fetch(state.settings.gasUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
@@ -376,10 +414,17 @@
         function renderForm() {
             let html = `
                 <div class="bg-white rounded-xl shadow-sm p-4 md:p-6 mb-6">
-                    <div class="flex justify-between items-center mb-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                         <h2 class="text-xl font-bold text-gray-800">${state.currentId ? '報告書の編集' : '新規報告書の作成'}</h2>
-                        <div class="space-x-2">
-                            <button onclick="clearForm()" class="text-sm text-gray-500 hover:text-gray-700 underline">クリア</button>
+                        
+                        <div class="flex items-center gap-3 w-full sm:w-auto">
+                            <!-- テンプレート読み込みセレクトボックス -->
+                            <select onchange="loadTemplate(this.value)" class="flex-1 sm:flex-none p-2 border border-teal-200 rounded text-sm bg-teal-50 text-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer">
+                                <option value="">テンプレートを呼び出す...</option>
+                                ${state.templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}
+                            </select>
+                            
+                            <button onclick="clearForm()" class="text-sm text-gray-500 hover:text-gray-700 underline whitespace-nowrap">クリア</button>
                         </div>
                     </div>
                     
@@ -414,7 +459,6 @@
                                 rows="2"
                             >${state.formData[field.id]}</textarea>
                         </div>
-                        <!-- 個別AI添削ボタンを復活 -->
                         <div class="mt-2 flex justify-end">
                             <button onclick="requestAiImprovementSingle('${field.id}')" class="flex items-center gap-1 text-sm bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-full hover:bg-indigo-100 font-medium transition">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -428,15 +472,22 @@
             html += `
                     </div>
                     
-                    <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-                        <button onclick="saveCurrentForm()" class="flex-1 py-3 bg-teal-600 text-white rounded-lg font-bold shadow-md hover:bg-teal-700 transition flex justify-center items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                            履歴に保存する
-                        </button>
-                        <button onclick="generatePDF()" id="btn-pdf" class="flex-1 py-3 bg-white border-2 border-teal-600 text-teal-600 rounded-lg font-bold shadow-sm hover:bg-teal-50 transition flex justify-center items-center gap-2">
+                    <div class="mt-8 flex flex-col gap-4">
+                        <button onclick="openTemplateModal()" class="w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg font-bold shadow-sm hover:bg-indigo-100 transition flex justify-center items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                            提出用PDFを作成
+                            入力内容をテンプレートにする
                         </button>
+
+                        <div class="flex flex-col sm:flex-row gap-4 justify-center pt-2">
+                            <button onclick="saveCurrentForm()" class="flex-1 py-3 bg-teal-600 text-white rounded-lg font-bold shadow-md hover:bg-teal-700 transition flex justify-center items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                履歴に保存する
+                            </button>
+                            <button onclick="generatePDF()" id="btn-pdf" class="flex-1 py-3 bg-white border-2 border-teal-600 text-teal-600 rounded-lg font-bold shadow-sm hover:bg-teal-50 transition flex justify-center items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                提出用PDFを作成
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -545,6 +596,20 @@
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- テンプレート管理エリアを追加 -->
+                    <div class="mt-8 border-t pt-6">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">保存済みテンプレート管理</h3>
+                        <div class="space-y-2" id="settings-templates-list">
+                            ${state.templates.length === 0 ? '<p class="text-sm text-gray-500">保存されたテンプレートはありません。</p>' : ''}
+                            ${state.templates.map(t => `
+                                <div class="flex justify-between items-center p-3 bg-gray-50 border rounded-lg">
+                                    <span class="text-sm font-medium text-gray-700">${escapeHtml(t.name)}</span>
+                                    <button onclick="deleteTemplate('${t.id}')" class="text-xs px-3 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200">削除</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
             `;
             return html;
@@ -604,8 +669,8 @@
             saveDraft();
             renderApp();
 
-            // GASへデータ送信
-            sendToGas('save', record);
+            // GASへ履歴データを送信
+            sendToGas('save', record, 'history');
         }
 
         function loadHistoryItem(id) {
@@ -638,7 +703,7 @@
                 showToast("削除しました");
 
                 // GASへ削除リクエスト送信
-                sendToGas('delete', id);
+                sendToGas('delete', id, 'history');
             }
         }
 
@@ -664,19 +729,95 @@
             if(gasUrl) fetchFromGas();
         }
 
-        // --- バックアップ・復元 ---
-        function exportData() {
-            if (state.history.length === 0) {
-                showToast("バックアップするデータがありません", "info");
+        // --- テンプレート関連機能 ---
+
+        function openTemplateModal() {
+            document.getElementById('input_template_name').value = '';
+            document.getElementById('templateModal').classList.remove('hidden');
+            document.getElementById('templateModal').classList.add('flex');
+        }
+
+        function closeTemplateModal() {
+            document.getElementById('templateModal').classList.add('hidden');
+            document.getElementById('templateModal').classList.remove('flex');
+        }
+
+        function executeSaveTemplate() {
+            const name = document.getElementById('input_template_name').value.trim();
+            if (!name) {
+                showToast("テンプレート名を入力してください", "error");
                 return;
             }
-            const dataStr = JSON.stringify(state.history, null, 2);
+
+            const id = 'TPL_' + Date.now().toString();
+            // 項目1〜7のみを抽出（日付や名前は除外）
+            const templateData = {
+                id: id,
+                name: name,
+                data: {
+                    item1: state.formData.item1, item2: state.formData.item2, item3: state.formData.item3, 
+                    item4: state.formData.item4, item5: state.formData.item5, item6: state.formData.item6, item7: state.formData.item7
+                }
+            };
+
+            state.templates.push(templateData);
+            saveTemplates();
+            
+            // GASへテンプレートとして送信
+            sendToGas('save', templateData, 'template');
+
+            closeTemplateModal();
+            renderApp(); // セレクトボックスの更新
+            showToast(`「${name}」をテンプレートとして保存しました`);
+        }
+
+        function loadTemplate(templateId) {
+            if (!templateId) return;
+            
+            const template = state.templates.find(t => t.id === templateId);
+            if (template) {
+                if(confirm(`テンプレート「${template.name}」を現在の入力枠に反映しますか？\n（現在入力されている内容は上書きされます）`)) {
+                    // 日付、名前、指導者はそのまま残し、項目1〜7だけを上書きする
+                    Object.keys(template.data).forEach(key => {
+                        state.formData[key] = template.data[key] || '';
+                    });
+                    saveDraft();
+                    renderApp(); // 画面を再描画して反映
+                    showToast("テンプレートを読み込みました");
+                }
+            }
+            // セレクトボックスの選択状態をリセット
+            event.target.value = '';
+        }
+
+        function deleteTemplate(id) {
+            if (confirm("このテンプレートを削除しますか？")) {
+                state.templates = state.templates.filter(t => t.id !== id);
+                saveTemplates();
+                renderApp(); // 設定画面のリストを更新
+                showToast("テンプレートを削除しました");
+                
+                // GASへ削除リクエスト送信
+                sendToGas('delete', id, 'template');
+            }
+        }
+
+
+        // --- バックアップ・復元 ---
+        function exportData() {
+            // 履歴とテンプレートを両方バックアップする
+            const exportObj = {
+                history: state.history,
+                templates: state.templates
+            };
+            
+            const dataStr = JSON.stringify(exportObj, null, 2);
             const blob = new Blob([dataStr], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             const dateStr = new Date().toLocaleDateString('sv-SE').replace(/-/g, '');
-            a.download = `OJT報告書バックアップ_${dateStr}.json`;
+            a.download = `OJT報告書データ_${dateStr}.json`;
             a.click();
             URL.revokeObjectURL(url);
             showToast("バックアップファイルをダウンロードしました");
@@ -689,12 +830,23 @@
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    if (Array.isArray(data)) {
+                    // 新しいフォーマット（オブジェクト）の場合
+                    if (data.history || data.templates) {
+                        if (confirm(`履歴とテンプレートデータを復元しますか？`)) {
+                            if(data.history) state.history = data.history;
+                            if(data.templates) state.templates = data.templates;
+                            saveHistory();
+                            saveTemplates();
+                            renderApp();
+                            showToast("データを復元しました");
+                        }
+                    // 古いフォーマット（配列のみ＝履歴のみ）の場合
+                    } else if (Array.isArray(data)) {
                         if (confirm(`読み込んだ ${data.length} 件のデータで履歴を上書きしますか？`)) {
                             state.history = data;
                             saveHistory();
                             renderApp();
-                            showToast("データを復元しました");
+                            showToast("履歴データを復元しました");
                         }
                     } else { showToast("不正なファイル形式です", "error"); }
                 } catch(err) { showToast("ファイルの読み込みに失敗しました", "error"); }
@@ -709,42 +861,33 @@
             return state.settings.apiKey || envApiKey;
         }
 
-        // AIの利用回数を記録する配列と制限回数（無料枠の15回を超えないよう安全のため14回に設定）
         let apiRequestHistory = [];
         const API_LIMIT_PER_MINUTE = 14;
 
-        // テキストのみを返す汎用API呼び出し
         async function callGeminiText(prompt, systemInstruction = "") {
             const apiKey = getActiveApiKey();
             if (!apiKey) throw new Error("APIキーが設定されていません。設定画面で入力してください。");
 
-            // --- 1分間の使用回数をチェックする機能 ---
             const now = Date.now();
-            // 現在時刻から1分（60000ミリ秒）以上前の履歴をリセット
             apiRequestHistory = apiRequestHistory.filter(timestamp => now - timestamp < 60000);
             
-            // 制限回数に達している場合は通信をストップして残り秒数を案内
             if (apiRequestHistory.length >= API_LIMIT_PER_MINUTE) {
                 const oldestRequest = apiRequestHistory[0];
                 const waitTimeSec = Math.ceil((60000 - (now - oldestRequest)) / 1000);
                 throw new Error(`【回数制限】使いすぎ防止機能が作動しました。約${waitTimeSec}秒待ってから再度お試しください。`);
             }
             
-            // 今回の通信時刻を記録
             apiRequestHistory.push(now);
-            // ----------------------------------------
 
             const payload = { contents: [{ parts: [{ text: prompt }] }] };
             if (systemInstruction) payload.systemInstruction = { parts: [{ text: systemInstruction }] };
 
-            // ★試行するAIモデルの順番リスト（優先順位順）
             const models = ['gemini-3.1-flash', 'gemini-3.0-flash', 'gemini-2.5-flash'];
             let lastError = null;
 
             for (const model of models) {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
                 
-                // 通信エラー時などのための再試行ループ（最大3回）
                 for (let i = 0; i < 3; i++) {
                     try {
                         const response = await fetch(url, {
@@ -757,11 +900,9 @@
                              if (response.status === 429) {
                                  throw new Error("RATE_LIMIT_EXCEEDED");
                              }
-                             // モデルが見つからない・サポートされていないエラーの場合
                              if (response.status === 404 || (response.status === 400 && errorData.error?.message?.includes("not found"))) {
                                  throw new Error("MODEL_UNAVAILABLE");
                              }
-                             // APIキー無効などの致命的なエラーの場合
                              if (response.status === 400 && errorData.error) {
                                  throw new Error(`APIエラー: ${errorData.error.message}`);
                              }
@@ -772,23 +913,16 @@
                     } catch (error) {
                         lastError = error;
                         
-                        // 回数制限エラーや、明らかなAPIエラー（キー間違いなど）は即座に終了（他のモデルを試さない）
                         if (error.message === "RATE_LIMIT_EXCEEDED") throw new Error("AIの利用制限（一時的）に達しました。1分ほど待ってから再度お試しください。");
                         if (error.message.startsWith("APIエラー:")) throw error;
-                        
-                        // モデルが存在しない場合は、このモデルのリトライをやめて次のモデルへ進む
                         if (error.message === "MODEL_UNAVAILABLE") break; 
 
-                        // その他の通信エラー等は少し待機してリトライ
-                        if (i === 2) break; // 3回失敗したら次のモデルを試す
+                        if (i === 2) break; 
                         await new Promise(res => setTimeout(res, [1000, 2000][i]));
                     }
                 }
-                // コンソールにログを出して次のモデル（forループの次）へ進む
                 console.log(`${model} の呼び出しに失敗しました。次のモデルを試行します。`);
             }
-            
-            // すべてのモデルを試してダメだった場合
             throw new Error("すべてのAIモデルへの通信に失敗しました。APIキーに誤りがないか確認してください。");
         }
 
@@ -824,10 +958,8 @@
             try {
                 const improvedText = await callGeminiText(prompt, systemInst);
                 
-                // 元の「aiModal」のIDを利用（一括用の「aiModalAll」から変更）
                 currentEditingFieldId = fieldId;
                 
-                // 一括用のモーダルを使い回すのではなく、個別用のシンプルなモーダルUIを再構築
                 const container = document.getElementById('aiModalContent');
                 container.innerHTML = `
                     <div class="mb-4">
@@ -842,14 +974,6 @@
                     </div>
                 `;
                 
-                // 一括適用ボタンから個別適用ボタンへイベントを変更
-                const applyBtnContainer = document.querySelector('#aiModalAll .flex.justify-end');
-                applyBtnContainer.innerHTML = `
-                    <button onclick="closeAiModalAll()" class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition">キャンセル</button>
-                    <button onclick="applyAiTextSingle()" class="px-5 py-2.5 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700 shadow-md transition">この文章を適用する</button>
-                `;
-
-                // タイトル変更
                 document.querySelector('#aiModalAll h3').innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> AIによる文章修正 (${fieldDef.label})`;
 
                 document.getElementById('aiModalAll').classList.remove('hidden');
@@ -882,77 +1006,9 @@
             closeAiModalAll();
         }
 
-        // 既存の不要になった関数をコメントアウト（または削除）
-        // function requestAiImprovementAll() { ... }
-        // function callGeminiJson() { ... }
-        // function renderAiModalAll() { ... }
-        // function applyAiTextAll() { ... }
-        function renderAiModalAll(originalData, improvedData) {
-            const container = document.getElementById('aiModalContent');
-            container.innerHTML = ''; 
-            
-            let hasContent = false;
-
-            fields.forEach(field => {
-                const origText = originalData[field.id] || '';
-                const impText = improvedData[field.id] || '';
-                
-                if (!origText.trim() && !impText.trim()) return; 
-                hasContent = true;
-                
-                const html = `
-                    <div class="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                        <h4 class="font-bold text-teal-800 text-sm mb-3 pb-1 border-b border-teal-100">${field.label}</h4>
-                        <div class="mb-3 pl-2 border-l-2 border-gray-300">
-                            <label class="block text-xs font-bold text-gray-500 mb-1">あなたの入力（修正前）</label>
-                            <div class="text-sm text-gray-600 whitespace-pre-wrap">${escapeHtml(origText) || '<span class="text-gray-400">（未記入）</span>'}</div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-teal-600 mb-1">AI修正案（ここで手直し可能）</label>
-                            <textarea id="modal_edit_${field.id}" class="w-full p-2.5 border-2 border-teal-200 rounded-lg text-sm text-gray-800 focus:outline-none focus:border-teal-500 bg-white" rows="3" oninput="autoResize(this)">${impText}</textarea>
-                        </div>
-                    </div>
-                `;
-                container.insertAdjacentHTML('beforeend', html);
-            });
-
-            if(!hasContent) {
-                 container.innerHTML = '<div class="text-center text-gray-500 py-4">添削する内容がありませんでした。</div>';
-            }
-            
-            document.getElementById('aiModalAll').classList.remove('hidden');
-            document.getElementById('aiModalAll').classList.add('flex');
-            
-            // モーダル内のtextareaの高さを自動調整
-            setTimeout(() => {
-                container.querySelectorAll('textarea').forEach(el => autoResize(el));
-            }, 50);
-        }
-
         function closeAiModalAll() {
             document.getElementById('aiModalAll').classList.add('hidden');
             document.getElementById('aiModalAll').classList.remove('flex');
-        }
-
-        function applyAiTextAll() {
-            fields.forEach(field => {
-                const textarea = document.getElementById(`modal_edit_${field.id}`);
-                if (textarea) {
-                    const newText = textarea.value;
-                    // stateを更新
-                    updateFormData(field.id, newText);
-                    
-                    // フォーム画面のtextareaも更新
-                    const formTextarea = document.getElementById(`input_${field.id}`);
-                    if (formTextarea) {
-                        formTextarea.value = newText;
-                        autoResize(formTextarea);
-                    }
-                }
-            });
-            
-            showToast("すべての項目に文章を適用しました");
-            closeAiModalAll();
         }
 
         // AI分析機能（過去の統計）
@@ -978,10 +1034,8 @@
             const prompt = `以下のデータは、ある新人の過去のOJT振り返り記録です。このデータをもとに、以下の4つの見出しで分析レポートを作成してください。箇条書きを用い、見やすく簡潔にまとめてください。出力はMarkdown形式のテキストにしてください。\n\n1. 全体的な成長の傾向（できるようになったこと）\n2. 現在継続している課題・苦手な傾向\n3. 安全面での傾向・注意点\n4. 指導者へ向けた今後のアドバイス\n\n【データ】\n${historyText}`;
 
             try {
-                // 統計レポートはプレーンテキストとして取得
                 const reportMd = await callGeminiText(prompt, systemInst);
                 
-                // 簡単なMarkdown→HTML変換
                 const htmlContent = reportMd
                     .replace(/^### (.*$)/gim, '<h4 class="text-md font-bold mt-4 mb-2 text-indigo-700">$1</h4>')
                     .replace(/^## (.*$)/gim, '<h3 class="text-lg font-bold mt-5 mb-3 text-indigo-800 border-b pb-1">$1</h3>')
@@ -1044,7 +1098,6 @@
             const container = document.getElementById('pdf-content');
             container.innerHTML = html;
 
-            // PDFの余白はCSS(.pdf-pageのpadding:15mm)で制御するため、optのmarginは0
             const opt = {
                 margin:       0,
                 filename:     `OJT日報_${data.date}_${data.name || '名称未設定'}.pdf`,
@@ -1054,7 +1107,6 @@
             };
 
             setTimeout(() => {
-                // PDFオブジェクトを取得してページ番号と日付を追加
                 html2pdf().set(opt).from(container).toPdf().get('pdf').then(function (pdf) {
                     const totalPages = pdf.internal.getNumberOfPages();
                     const dateStr = data.date ? data.date.replace(/-/g, '/') : '';
@@ -1063,8 +1115,6 @@
                         pdf.setPage(i);
                         pdf.setFontSize(10);
                         pdf.setTextColor(100);
-                        
-                        // ページ右上に日付とページ番号を追加 (A4幅210mmの右から20mmの位置)
                         const headerText = `${dateStr}    ${i} / ${totalPages}`;
                         pdf.text(headerText, 210 - 20, 10, { align: 'right' });
                     }
