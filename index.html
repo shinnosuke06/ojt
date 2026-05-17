@@ -44,7 +44,6 @@
         
         /* PDFページの基本スタイル */
         .pdf-page {
-            /* paddingはhtml2pdf側のmargin設定に任せるため削除 */
             background-color: white;
             font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
             color: #333;
@@ -68,13 +67,12 @@
             font-size: 13px;
         }
         
-        /* 項目と回答がページを跨がないための設定 */
+        /* セクション全体での改ページ禁止をやめて、1ページ目の巨大空白を防ぐ */
         .pdf-section {
-            page-break-inside: avoid;
-            break-inside: avoid;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
         
+        /* 見出しと本文が泣き別れにならないように設定 */
         .pdf-label {
             font-weight: bold;
             background-color: #f0fdfa;
@@ -82,13 +80,24 @@
             border-left: 4px solid #0d9488;
             margin-bottom: 5px;
             font-size: 13px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            page-break-after: avoid;
+            break-after: avoid;
         }
         
         .pdf-value {
-            padding: 5px 12px;
-            white-space: pre-wrap;
+            color: #333;
+        }
+
+        /* 文字が画像として切断されるのを防ぐため、1行ずつに改ページ禁止を付与 */
+        .pdf-line {
+            padding: 2px 12px;
             line-height: 1.6;
-            min-height: 40px;
+            min-height: 1.6em;
+            word-wrap: break-word;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
 
         /* トースト通知 */
@@ -1066,28 +1075,44 @@
                         <div><strong>【指導者】</strong> ${data.trainer || '未記入'}</div>
                     </div>
             `;
+            
+            // ===== 修正箇所：テキストを改行ごとに分割し、1行ずつdivに入れる =====
             fields.forEach(field => {
                 const val = data[field.id];
+                let valueHtml = '';
+                
+                if (val) {
+                    const lines = val.split('\n');
+                    lines.forEach(line => {
+                        // 空行も高さを保つ、文字があればエスケープ
+                        valueHtml += `<div class="pdf-line">${line ? escapeHtml(line) : '<br>'}</div>`;
+                    });
+                } else {
+                    valueHtml = `<div class="pdf-line"><span style="color:#999;">（記入なし）</span></div>`;
+                }
+
                 html += `
                     <div class="pdf-section">
                         <div class="pdf-label">${field.label}</div>
-                        <div class="pdf-value">${val ? escapeHtml(val) : '<span style="color:#999;">（記入なし）</span>'}</div>
+                        <div class="pdf-value">${valueHtml}</div>
                     </div>
                 `;
             });
+            // ==========================================================
+            
             html += `</div>`;
             
             const container = document.getElementById('pdf-content');
             container.innerHTML = html;
 
-            // ===== 修正箇所 =====
-            // html2pdfのオプションでmarginを[上, 右, 下, 左]ミリメートルで指定
             const opt = {
                 margin:       [15, 20, 15, 20], 
                 filename:     `OJT日報_${data.date}_${data.name || '名称未設定'}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
                 html2canvas:  { scale: 2, useCORS: true, logging: false },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                // ===== 修正箇所：CSSの改ページ指示を有効にするオプション =====
+                pagebreak:    { mode: ['css', 'legacy'] }
             };
 
             setTimeout(() => {
@@ -1101,8 +1126,6 @@
                         pdf.setTextColor(100);
                         const headerText = `${dateStr}    ${i} / ${totalPages}`;
                         
-                        // ===== 修正箇所 =====
-                        // marginで上に15mm余白を取ったので、文字が被らないようにy座標を10から8に少し上に移動
                         pdf.text(headerText, 210 - 20, 8, { align: 'right' }); 
                     }
                 }).save().then(() => {
