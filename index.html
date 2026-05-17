@@ -13,7 +13,7 @@
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- html2pdf.js for PDF generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" xintegrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     
     <style>
         /* テキストエリアの自動リサイズ用（手動リサイズ無効化、スクロールバー非表示） */
@@ -38,13 +38,13 @@
             position: absolute;
             left: -9999px;
             top: -9999px;
-            width: 210mm; /* A4 width */
+            /* A4用紙の幅(210mm)から左右の余白(各20mm)を引いた幅に設定 */
+            width: 170mm;
         }
         
         /* PDFページの基本スタイル */
         .pdf-page {
-            width: 210mm;
-            padding: 15mm 20mm; /* 上下に15mmの余白を強制 */
+            /* paddingはhtml2pdf側のmargin設定に任せるため削除 */
             background-color: white;
             font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
             color: #333;
@@ -260,7 +260,7 @@
                 item1: '', item2: '', item3: '', item4: '', item5: '', item6: '', item7: ''
             },
             history: [],
-            templates: [], // テンプレート保存用配列を追加
+            templates: [], 
             settings: {
                 apiKey: '',
                 gasUrl: '',
@@ -304,7 +304,6 @@
                 }
             }
 
-            // GASからのデータ自動取得（URL設定時のみ）
             fetchFromGas();
         }
 
@@ -331,7 +330,6 @@
                 const res = await fetch(state.settings.gasUrl);
                 const data = await res.json();
                 
-                // 新しいGASコードでは {history: [], templates: []} の形式で返ってくる想定
                 if (data.history && Array.isArray(data.history)) {
                     state.history = data.history;
                     saveHistory();
@@ -341,7 +339,6 @@
                     saveTemplates();
                 }
                 
-                // 古いGASコードの場合は配列が直接返ってくる
                 if (Array.isArray(data)) {
                     state.history = data;
                     saveHistory();
@@ -353,13 +350,12 @@
             }
         }
 
-        // action: 'save' or 'delete', data: 送信するデータ, target: 'history' or 'template'
         function sendToGas(action, data, target = 'history') {
             if (!state.settings.gasUrl) return;
             
             const payload = { action: action, target: target };
             if (action === 'save') payload.data = data;
-            if (action === 'delete') payload.id = data; // dataにはIDが入る想定
+            if (action === 'delete') payload.id = data; 
             
             fetch(state.settings.gasUrl, {
                 method: 'POST',
@@ -418,7 +414,6 @@
                         <h2 class="text-xl font-bold text-gray-800">${state.currentId ? '報告書の編集' : '新規報告書の作成'}</h2>
                         
                         <div class="flex items-center gap-3 w-full sm:w-auto">
-                            <!-- テンプレート読み込みセレクトボックス -->
                             <select onchange="loadTemplate(this.value)" class="flex-1 sm:flex-none p-2 border border-teal-200 rounded text-sm bg-teal-50 text-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer">
                                 <option value="">テンプレートを呼び出す...</option>
                                 ${state.templates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}
@@ -597,7 +592,6 @@
                         </div>
                     </div>
                     
-                    <!-- テンプレート管理エリアを追加 -->
                     <div class="mt-8 border-t pt-6">
                         <h3 class="text-lg font-bold text-gray-800 mb-4">保存済みテンプレート管理</h3>
                         <div class="space-y-2" id="settings-templates-list">
@@ -636,7 +630,7 @@
                 state.formData = {
                     date: new Date().toLocaleDateString('sv-SE'),
                     name: '',
-                    trainer: state.settings.defaultTrainer || '', // 既定の指導者をセット
+                    trainer: state.settings.defaultTrainer || '', 
                     item1: '', item2: '', item3: '', item4: '', item5: '', item6: '', item7: ''
                 };
                 state.currentId = null;
@@ -669,7 +663,6 @@
             saveDraft();
             renderApp();
 
-            // GASへ履歴データを送信
             sendToGas('save', record, 'history');
         }
 
@@ -702,7 +695,6 @@
                 renderApp();
                 showToast("削除しました");
 
-                // GASへ削除リクエスト送信
                 sendToGas('delete', id, 'history');
             }
         }
@@ -716,7 +708,6 @@
             state.settings.gasUrl = gasUrl;
             state.settings.defaultTrainer = defaultTrainer;
             
-            // 指導者が未設定の場合、保存した瞬間に即座に反映
             if(!state.formData.trainer && defaultTrainer) {
                 state.formData.trainer = defaultTrainer;
                 saveDraft();
@@ -725,7 +716,6 @@
             saveSettings();
             showToast("設定を保存しました");
             
-            // GAS URLが設定された場合、即座にデータ取得を試みる
             if(gasUrl) fetchFromGas();
         }
 
@@ -750,7 +740,6 @@
             }
 
             const id = 'TPL_' + Date.now().toString();
-            // 項目1〜7のみを抽出（日付や名前は除外）
             const templateData = {
                 id: id,
                 name: name,
@@ -763,11 +752,10 @@
             state.templates.push(templateData);
             saveTemplates();
             
-            // GASへテンプレートとして送信
             sendToGas('save', templateData, 'template');
 
             closeTemplateModal();
-            renderApp(); // セレクトボックスの更新
+            renderApp(); 
             showToast(`「${name}」をテンプレートとして保存しました`);
         }
 
@@ -777,16 +765,14 @@
             const template = state.templates.find(t => t.id === templateId);
             if (template) {
                 if(confirm(`テンプレート「${template.name}」を現在の入力枠に反映しますか？\n（現在入力されている内容は上書きされます）`)) {
-                    // 日付、名前、指導者はそのまま残し、項目1〜7だけを上書きする
                     Object.keys(template.data).forEach(key => {
                         state.formData[key] = template.data[key] || '';
                     });
                     saveDraft();
-                    renderApp(); // 画面を再描画して反映
+                    renderApp(); 
                     showToast("テンプレートを読み込みました");
                 }
             }
-            // セレクトボックスの選択状態をリセット
             event.target.value = '';
         }
 
@@ -794,10 +780,9 @@
             if (confirm("このテンプレートを削除しますか？")) {
                 state.templates = state.templates.filter(t => t.id !== id);
                 saveTemplates();
-                renderApp(); // 設定画面のリストを更新
+                renderApp(); 
                 showToast("テンプレートを削除しました");
                 
-                // GASへ削除リクエスト送信
                 sendToGas('delete', id, 'template');
             }
         }
@@ -805,7 +790,6 @@
 
         // --- バックアップ・復元 ---
         function exportData() {
-            // 履歴とテンプレートを両方バックアップする
             const exportObj = {
                 history: state.history,
                 templates: state.templates
@@ -830,7 +814,6 @@
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    // 新しいフォーマット（オブジェクト）の場合
                     if (data.history || data.templates) {
                         if (confirm(`履歴とテンプレートデータを復元しますか？`)) {
                             if(data.history) state.history = data.history;
@@ -840,7 +823,6 @@
                             renderApp();
                             showToast("データを復元しました");
                         }
-                    // 古いフォーマット（配列のみ＝履歴のみ）の場合
                     } else if (Array.isArray(data)) {
                         if (confirm(`読み込んだ ${data.length} 件のデータで履歴を上書きしますか？`)) {
                             state.history = data;
@@ -852,7 +834,7 @@
                 } catch(err) { showToast("ファイルの読み込みに失敗しました", "error"); }
             };
             reader.readAsText(file);
-            event.target.value = ''; // Reset input
+            event.target.value = ''; 
         }
 
         // === AI機能 (Gemini API) ===
@@ -951,7 +933,7 @@
 ・トーン＆マナー: 丁寧な「です・ます」調（謙譲語・尊敬語など、適切な敬語を使用）
 ・構成: パッと見て伝わるように、必要に応じて箇条書きなどを交えて整理してください。
 ・文字数・レイアウト: 簡潔に、読みやすくスッキリとしたレイアウトにすること。
-・その他: 拙い表現やネガティブすぎる反省があれば、意欲的で前向きなニュアンスに変換してください。架空の事実を追加してはいけません。出力は修正後の文章のみとしてください。`;
+・その他: 拙い表現やネガティブすぎる反省があれば、意欲的で前向きなニュニュアンスに変換してください。架空の事実を追加してはいけません。出力は修正後の文章のみとしてください。`;
 
             const prompt = `以下のメモは、OJT日報の「${fieldDef.label}」という項目のための下書きです。これを提出用の丁寧な文面に修正してください。\n\n【下書き】\n${text}`;
 
@@ -1011,7 +993,7 @@
             document.getElementById('aiModalAll').classList.remove('flex');
         }
 
-        // AI分析機能（過去の統計）
+        // AI分析機能
         async function startAiAnalysis() {
             if (state.history.length === 0) {
                 showToast("分析するための履歴データがありません。", "info");
@@ -1098,8 +1080,10 @@
             const container = document.getElementById('pdf-content');
             container.innerHTML = html;
 
+            // ===== 修正箇所 =====
+            // html2pdfのオプションでmarginを[上, 右, 下, 左]ミリメートルで指定
             const opt = {
-                margin:       0,
+                margin:       [15, 20, 15, 20], 
                 filename:     `OJT日報_${data.date}_${data.name || '名称未設定'}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
                 html2canvas:  { scale: 2, useCORS: true, logging: false },
@@ -1116,7 +1100,10 @@
                         pdf.setFontSize(10);
                         pdf.setTextColor(100);
                         const headerText = `${dateStr}    ${i} / ${totalPages}`;
-                        pdf.text(headerText, 210 - 20, 10, { align: 'right' });
+                        
+                        // ===== 修正箇所 =====
+                        // marginで上に15mm余白を取ったので、文字が被らないようにy座標を10から8に少し上に移動
+                        pdf.text(headerText, 210 - 20, 8, { align: 'right' }); 
                     }
                 }).save().then(() => {
                     if(btn) {
