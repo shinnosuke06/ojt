@@ -214,10 +214,14 @@ function generatePDFFromHistory(id){let r=state.history.find(x=>x.id===id);if(r)
 function generatePDF(){createPdf(state.formData);}
 function createPdf(d){
     let b=document.getElementById('btn-pdf');if(b){b.innerHTML=`<span class="spinner"></span>...`;b.disabled=true;}showToast("PDF作成中...","info");
-    let h=`<div class="pdf-page"><div class="pdf-title">${d.isSummary?'OJT振り返り（要約版）':'OJT振り返り（日報）'}</div><div class="pdf-header-info"><div><strong>【日付】</strong> ${d.date||'未記入'}</div><div><strong>【氏名】</strong> ${d.name||'未記入'}</div><div><strong>【指導者】</strong> ${d.trainer||'未記入'}</div></div>`;
+    
+    // PDFのタイトルを「OJT振り返りシート（日報）」に統一
+    let h=`<div class="pdf-page"><div class="pdf-title">OJT振り返りシート（日報）</div><div class="pdf-header-info"><div><strong>【日付】</strong> ${d.date||'未記入'}</div><div><strong>【氏名】</strong> ${d.name||'未記入'}</div><div><strong>【指導者】</strong> ${d.trainer||'未記入'}</div></div>`;
+    
     if(d.isSummary)h+=`<div class="pdf-section"><div class="pdf-label">提出用レポート</div><div class="pdf-value">${d.summaryText?formatLines(d.summaryText):'<div class="pdf-line">（記入なし）</div>'}</div></div>`;
     else fields.forEach(f=>h+=`<div class="pdf-section"><div class="pdf-label">${f.label}</div><div class="pdf-value">${d[f.id]?formatLines(d[f.id]):'<div class="pdf-line">（記入なし）</div>'}</div></div>`);
     document.getElementById('pdf-content').innerHTML=h+`</div>`;
+    
     setTimeout(()=>{html2pdf().set({margin:[15,20,15,20],filename:`OJT日報_${d.date}.pdf`,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,logging:false},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from(document.getElementById('pdf-content')).toPdf().get('pdf').then(p=>{let t=p.internal.getNumberOfPages();for(let i=1;i<=t;i++){p.setPage(i);p.setFontSize(10);p.setTextColor(100);p.text(`${d.date?d.date.replace(/-/g,'/'):''}    ${i} / ${t}`,190,8,{align:'right'});}}).save().then(()=>{if(b){b.innerHTML=`PDFを作成`;b.disabled=false;}showToast("完了しました");}).catch(e=>{if(b){b.innerHTML=`PDFを作成`;b.disabled=false;}showToast("エラー発生","error");});},100);
 }
 function escapeHtml(s){return s?s.replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m])):'';}
